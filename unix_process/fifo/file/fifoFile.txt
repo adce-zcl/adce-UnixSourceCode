@@ -1,0 +1,6 @@
+filename:fifoFile.txt
+filepath:/home/adce/mycode/vscode/unix_process/fifo/file/fifoFile.txt
+content:
+1.Hello Fifo, this is a File.
+2.hello world!
+3.good study!

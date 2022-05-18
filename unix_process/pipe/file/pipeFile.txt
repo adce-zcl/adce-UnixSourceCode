@@ -1,0 +1,6 @@
+filename:pipeFile.txt
+filepath:/home/adce/mycode/vscode/unix_process/pipe/file/pipeFile.txt
+content:
+1.Hello Pipe, this is a File.
+2.hello world!
+3.good study!
