@@ -1,0 +1,178 @@
+进程间通信
+    同一台主机上的进程通信 -- 不同主机上的通信
+
+1.管道（最常用最古老的IPC，有局限性，只能半双工，只能关系进程之间使用）
+2.FIFO（命名管道，无进程关系限制，半双工，是一种实实在在的文件类型）
+3.域套接字（全双工，无进程限制）
+
+
+
+1、管道
+    内核提供，单工，自同步机制：管道永远是迁就慢的那一方
+    在使用管道的时候，一般一个进程的一个管道只使用read或者write，
+    最好把另一端关闭。
+    绝对不会一根管道双工通信，只能用两根管道
+
+    匿名管道：
+	    pipe();
+
+        #include <unistd.h>
+        int pipe(int pipefd[2]);
+        #define _GNU_SOURCE             /* See feature_test_macros(7) */
+        #include <fcntl.h>              /* Obtain O_* constant definitions */
+        #include <unistd.h>
+        int pipe2(int pipefd[2], int flags);
+    
+    命名管道：
+        从磁盘上能看到的类型为p的pipe文件
+        mkfifo();
+
+        #include <sys/types.h>
+        #include <sys/stat.h>
+        int mkfifo(const char *pathname, mode_t mode);
+        #include <fcntl.h>           /* Definition of AT_* constants */
+        #include <sys/stat.h>
+        int mkfifoat(int dirfd, const char *pathname, mode_t mode);
+        mkfifo也是shell命令，可以创建一个管道
+
+2、Posix IPC -> SysV
+    IPC -> Inter Process Communication
+
+    三种通信机制：使用ipcs shell命令可以查看
+    这三个机制既可以在有亲缘关系的进程之间通信，也可以在没有关系的进程之间通信
+    xxxget,xxxop,xxxctl
+
+    主动端：先发包的一方 -- 客户端
+    被动端：先收包的一方（先运行） -- 服务器
+    无需要严格CS模式
+    
+    key：用于没有亲缘关系的进程之间的通信，确保拿到同一个机制
+    ftok();
+    #include <sys/types.h>
+    #include <sys/ipc.h>
+    key_t ftok(const char *pathname, int proj_id);
+
+    消息队列（msg）(双工）：
+        正常来讲是先打开接收端，再启动发送端，
+        如果相反，消息队列也有一定的缓存能力，ulimit -a 可以查看
+        异常杀死的程序，队列还会存在，可以使用 ipcrm shell命令杀掉
+        msgget();
+        msgop();
+        msgctl();
+
+    共享内存段（shm）：
+        他比mmap的实现要麻烦一点，狗都不用
+        shmget();
+        shmop();
+        shmctl();
+
+    信号量数组（sem）：
+        典型的PV操作
+        semget();
+        semop();
+        semctl();
+
+3、网络套接字socket -- 跨主机
+
+    字节序问题：
+        大端存储：底地址处放高字节
+        小端存储：底地址处放底字节 x86
+    
+    为了模糊大小端，产生了主机字节序和网络字节序：
+        主机字节序：host
+        网络字节序：network
+        一些列转换函数：__to__
+
+    对齐问题：
+        四字节对齐，等等
+        比如一个结构体的大小，不一定等于它内部变量大小之和；
+        如果进行了对齐，可能要更大；
+        在进行网络传输的时候，一定要取消对齐
+        取消对齐这件事情是编译器做的，所以需要使用宏指定不对齐
+
+    类型长度问题：
+        一个int类型或者一个char类型的大小是多大？
+        这个在标准C当中是没有定义的，x86中int可能是4字节
+        只是规定了，short一定比int小，long一定比int大，
+        所以我们可以使用标准规定的类型。
+        int32_t -- 32位有符号整型数
+        uint32_t -- 
+
+    socket：
+        介于用户和协议之间的实现工具
+        #include <sys/types.h>          /* See NOTES */
+        #include <sys/socket.h>
+        int socket(int domain, int type, int protocol)
+        domain：域，协议族
+        type：上层如何实现
+        protocol：协议
+
+    报式套接字 -- UDP：
+        可能传输的结构体，以数据分总的形式传输，
+        以严格的包发送，有清楚的边界；
+        看程序员能不能完成网络字节的传输，一般是看他的报式套接字用的如何。
+        只要是网络传输，就没有传输指针这一说法，因为两端主机，指针没有意义。
+
+        被动端--服务端：
+            1.取得socket
+            2.给socket取得地址
+            3.收发消息
+            4.关闭socket
+
+        主动端--客户端：
+            1.取得socket
+            2.给socket取得地址（可省略）
+            3.收发消息
+            4.关闭socket
+
+        函数：
+            socket();
+            bind();
+            sendto();
+            rcvfrom();
+            inet_pton();
+            inet_ntop();
+            setsockeopt();
+            getsocketopt();
+
+        多点通讯：
+            因为流式套接字是一对一的，所以只有报式套接字能作广播
+            广播：全网广播，子网广播，多播/组播
+            多播/组播 是很好的一种形式
+            广播默认是不能发送的，
+            因为在七层模型中，层与层之间是有开关的，默认是不互通的，
+            所以要用特定的函数打开。
+            这些设置一般都在man手册的第七章，man socket可以查看
+            设置socket的属性中,多种多样,还能指定走哪个网卡;
+
+            shell命令 ip ro sh 可以查看路由设置;
+
+            特殊的多播地址:224.0.0.1
+            所有支持多播的节点都默认在这个地址当中,并且无法离开,
+            所以往224.0.0.1上发送,就相当于往255.255.255.255发消息
+
+        停等式流控:
+        用丢包率换确定收到包
+        udp是不保证可到传输的,丢包是不可避免的,网络是公共资源
+
+    流式套接字 -- TCP：
+        以字节流传输，数据没有严格的边界
+
+
+        客户端 -- 主动端:
+            1.新建socket
+            2.给socket创建地址(可省略)
+            3.发送连接
+            4.收发消息
+            5.关闭连接
+            6.关闭socket
+
+        服务器 -- 被动端:
+            1.新建socket
+            2.给socket创建地址
+            3.将socket设置为监听模式
+            4.接收连接
+            5.收发消息
+            6.关闭
+        
+        服务器端监听的socket和通信的socket不是同一个.

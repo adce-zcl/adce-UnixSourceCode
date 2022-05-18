@@ -1,0 +1,128 @@
+高级IO
+
+    非阻塞IO -- 对比阻塞IO
+    非阻塞：能做就做，不能做也不等待
+    因为速度不匹配，有些IO函数会出现假错，
+    不是因为函数报错，而是阻塞IO在读取或者写入的时候速度太慢。
+
+    有限状态机编程思想
+
+1、非阻塞IO -- 补充有限状态机思想
+    数据中继：数据在文件之间传输
+    简单流程：一个程序的自然流程是结构化的 -- 大象装冰箱
+    复杂流程：一个程序的自然流程不是结构化的 -- 多分支多跳转 -- 有限状态机解决
+              网络协议通常不是简单流程
+    自然流程：作为人类最直接的解决问题的思路
+
+
+2、IO多路转接（IO多路复用）
+    监视文件描述符的行为，只有在感兴趣的事件发生了，才会去做响应
+    类似信号槽机制，监听者模式
+
+    select();   //移植性比较好，比较古老，接口有缺陷
+                //以事件为单位，组织文件描述符
+                //最麻烦的地方是，他的条件存放集合和结果存放集合是同一块空间
+                //导致无论监听的结果是否是我们想要的，都会重置集合
+                //这就需要我们每次都要手动重新设置条件集合，
+                //这就是需要一个while的地方，这是一笔很大的开销
+                //而且能监听的文件描述符是有数量限制的，不能超过int类型
+                //监听的类型也太单一，只能监听读和写，其他的事件都认为是异常
+
+    poll();     //以文件描述符为单位，组织事件，比较中立
+                //poll的工作方式是完全和select相反的，
+                //select是以事件为单位，组织文件描述符
+                //poll是以文件描述符为单位，组织事件
+                //poll监听的事件的种类更多
+                //将感兴趣的事件和发生的事件分开存储，这样就不需要重新设置集合
+                //通过timeout参数 0--非阻塞，-1 -- 阻塞
+                //可移植，使用poll的情况比使用select的情况多一些
+                //需要建立一个数组，可能比较占用空间
+                //用户态来维护这个数组，
+
+
+    epoll();    //是poll的进化版，是linux的方言，移植性不好
+                //以文件描述符来组织事件
+                //内核态来维护这个数组，他的函数变成了系统调用
+
+
+    以上三种方式，总体都是 布置监视任务 - 监视 - 取监视结果
+    又因为epoll是linux的方言，移植性不是很好，所以最多的就是使用poll
+    但是现在有集成的IO多路复用库，比如说libevent和libev
+
+        /* According to POSIX.1-2001, POSIX.1-2008 */
+       #include <sys/select.h>
+       /* According to earlier standards */
+       #include <sys/time.h>
+       #include <sys/types.h>
+       #include <unistd.h>
+       int select(int nfds, fd_set *readfds, fd_set *writefds,
+                  fd_set *exceptfds, struct timeval *timeout);
+       void FD_CLR(int fd, fd_set *set);
+       int  FD_ISSET(int fd, fd_set *set);
+       void FD_SET(int fd, fd_set *set);
+       void FD_ZERO(fd_set *set);
+
+       #include <sys/select.h>
+       int pselect(int nfds, fd_set *readfds, fd_set *writefds,
+                   fd_set *exceptfds, const struct timespec *timeout,
+                   const sigset_t *sigmask);
+
+   Feature Test Macro Requirements for glibc (see feature_test_macros(7)):
+       pselect(): _POSIX_C_SOURCE >= 200112L
+    
+
+
+        #include <poll.h>
+       int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+       #define _GNU_SOURCE         /* See feature_test_macros(7) */
+       #include <signal.h>
+       #include <poll.h>
+       int ppoll(struct pollfd *fds, nfds_t nfds,
+               const struct timespec *tmo_p, const sigset_t *sigmask);
+
+ 
+3、其他读写函数
+    readv();
+    writev();
+
+    #include <sys/uio.h>
+    ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
+    ssize_t writev(int fd, const struct iovec *iov, int iovcnt);
+    
+    多个碎片的小地址，要写到同一个内存中，就需要这些函数比较方便，第二个参数是一个数组
+
+    readn();
+    writen();
+    这两个函数在man手册上man不到，这两个是apue.h头文件里面的，是apue的作者自己写的函数
+
+
+4、存储映射IO
+    存储映射IO就是指，在实际内存上，拿出来放到虚拟内存中，
+    得到虚拟内存的起始地址，我们访问虚拟内存，就如同直接访问实际内存。
+    可以很快的实现一块很好用的共享内存。
+
+    如果父进程先mmap再fork，因为子进程完全复制一份父进程的内存，
+    所以父进程和子进程的共享内存，也就是mmap映射的那一块，是同一块，
+    既然是同一块内存，就可以完成父子进程之间的通信。
+    所以说mmap很容易就做出来共享内存，而且很好用
+
+    mmap();
+    munmap();
+
+    #include <sys/mman.h>
+    void *mmap(void *addr, size_t length, int prot, int flags,
+                  int fd, off_t offset);
+    int munmap(void *addr, size_t length);
+
+5、文件锁
+    fcntl();
+    //麻烦一点，管家级的函数，一定要非阻塞实现
+    lockf();
+    // 可能会造成意外解锁的现象
+    flock();
+    // 功能和lockf类似
+
+
+    #include <unistd.h>
+    int lockf(int fd, int cmd, off_t len);
+

@@ -1,0 +1,365 @@
+文件系统：
+知识性的内容
+
+一、目录和文件
+
+1、获取文件属性
+    stat，fstat，lstat
+    stat:通过文件路径，获取属性，面对符号链接文件时，获得的是所指向的文件的属性
+    fstat：通过文件描述符获取属性，
+    lstat：面对符号链接文件时，获取的时符号链接文件的属性
+2、文件访问权限
+    st_mode是一个16位的位图，用于表示文件类型，文件访问权限
+    以及特殊权限位
+
+3、umask
+    作用：防止产生权限过松的文件，与某一个数做 & 运算
+    终端：umask 查看umask的值，可以修改
+
+4、文件权限的更改/管理
+    终端命令：chmod 666 big.c；chmod 777 FS.txt
+    函数：chmod，fchmod
+
+    #include <sys/stat.h>
+    int chmod(const char *pathname, mode_t mode);
+    int fchmod(int fd, mode_t mode);
+
+5、沾住位
+    就是 t位
+    作用就是在内存中保留可执行文件的执行痕迹，现在已经几乎没用了
+    现在常给目录设置t位
+    tmp目录有t位
+
+6、文件系统：FAT，UFS 这两个是同一时期的产物
+    文件系统：文件或数据的存储和管理
+
+    FAT：惧怕大文件，承载能力有限
+    FAT16/32文件系统的实质是一个静态存储的单链表
+    FAT文件系统有承载上限，原因在于结构体里的那个数组大小有限
+    当年需要磁盘分区就是因为FAT文件系统承载有上限
+    FAT文件系统的最大缺陷在于它的单链表结构，只能通过链表顺序查找，找到文件的内容
+    而且FAT不开源，FAT用于windows
+
+    内存吃紧：swap 的换出率和换入率都直线上升
+    内存清理工具：本质是不停的开程序，把内存的程序挤入到swap，然后关闭程序，治标不治本
+    磁盘碎片清理：清理的是对物理地址中间的映射，没什么用
+
+    UFS：开源，不怕大文件
+    类似操作系统课上讲的，有多级指针
+    缺陷：不善于管理小文件——inode占满了，但是数据块大量空闲，会导致查找慢
+    用位图来标记某个inode或者某个数据块是否被使用——位图的作用之一：加速查找
+
+    文件名存放在一个目录文件里，目录文件里有结构体，结构体项保存文件的inode和filename，叫目录项
+    位图面试：
+    不用判断和比较，实现比较无符号32位数？
+    判断无符号32位数的二进制有多少个0,1？
+
+7、硬链接，符号链接
+    硬链接：两个指针指向同一个数据块，数据和亚数据都是一模一样的
+    硬链接与目录项是同义词，且建立硬链接有限制：不能给分区建立，不能给目录建立
+    符号链接：特别像文件的快捷方式，快捷方式和源文件的信息可以不一样
+    符号链接优点：可以跨分区，可以给目录建立
+    ll查询的以l开头的文件是符号链接文件
+    link，unlink，remove，rename
+
+    link, linkat - make a new name for a file
+    #include <unistd.h>
+    int link(const char *oldpath, const char *newpath);
+
+    unlink, unlinkat - delete a name and possibly the file it refers to
+    #include <unistd.h>
+    int unlink(const char *pathname);
+    这个文件有没有被彻底删除不清楚，只有一个数据块的硬链接数为0,文件才会被删除，数据块才会被删除
+
+    可以用来创建临时文件，open一个文件以后直接unlink，
+    所以我获得了这个文件的一次使用权，当close的时候，文件被删除
+
+    remove - remove a file or directory
+    #include <stdio.h>
+    int remove(const char *pathname);
+    这是rm命令封装的系统调用函数
+
+    rename, renameat, renameat2 - change the name or location of a file
+    #include <stdio.h>
+    int rename(const char *oldpath, const char *newpath);
+
+8、utime
+    utime, utimes - change file last access and modification times
+    #include <sys/types.h>
+    #include <utime.h>
+    int utime(const char *filename, const struct utimbuf *times);
+
+    可个函数可以更改文件的最后一次读时间，和写的时间
+    ctime不是代表文件的创建的时间，linux不记录文件的创建时间
+
+9、目录的创建和销毁
+    mkdir，rmdir
+    mkdir, mkdirat - create a directory
+    #include <sys/stat.h>
+    #include <sys/types.h>
+    int mkdir(const char *pathname, mode_t mode);
+
+    rmdir - delete a directory
+    只能删除空目录，否则应该用递归删除
+    #include <unistd.h>
+    int rmdir(const char *pathname);
+
+10、更改当前工作路径
+    chdir，fchdir，chroot，getcwd
+    chdir, fchdir - change working directory
+    #include <unistd.h>
+    int chdir(const char *path);
+    int fchdir(int fd);
+
+
+    getcwd, getwd, get_current_dir_name - get current working directory
+    #include <unistd.h>
+    char *getcwd(char *buf, size_t size);
+    char *getwd(char *buf);
+    char *get_current_dir_name(void);
+
+11、分析目录、读取目录内容
+    glob，opendir，closedir，readdir，rewinddir，seekdir，telldir
+
+    glob():解析模式/通配符
+
+    glob, globfree - find pathnames matching a pattern, free memory from glob()
+    #include <glob.h>
+    int glob(const char *pattern, int flags,
+             int (*errfunc) (const char *epath, int eerrno),
+             glob_t *pglob);
+    void globfree(glob_t *pglob);
+    
+    pattern：模式
+
+    readdir - read a directory
+    #include <dirent.h>
+    struct dirent *readdir(DIR *dirp);
+
+    rewinddir - reset directory stream
+    #include <sys/types.h>
+    #include <dirent.h>
+    void rewinddir(DIR *dirp);
+
+    seekdir - set the position of the next readdir() call in the directory stream.
+    #include <dirent.h>
+    void seekdir(DIR *dirp, long loc);
+
+二、系统数据文件和信息
+
+1、/etc/passwd
+    getpwuid();
+    getpwdnam();
+    getpwnam, getpwnam_r, getpwuid, getpwuid_r - get password file entry
+
+    #include <sys/types.h>
+    #include <pwd.h>
+
+    struct passwd *getpwnam(const char *name);
+
+    struct passwd *getpwuid(uid_t uid);
+
+    int getpwnam_r(const char *name, struct passwd *pwd,
+                   char *buf, size_t buflen, struct passwd **result);
+
+    int getpwuid_r(uid_t uid, struct passwd *pwd,
+                   char *buf, size_t buflen, struct passwd **result);
+
+
+2、/etc/group
+    getgrgid();
+    getgrgrnam();
+
+    getgrnam, getgrnam_r, getgrgid, getgrgid_r - get group file entry
+    #include <sys/types.h>
+    #include <grp.h>
+    struct group *getgrnam(const char *name);
+    struct group *getgrgid(gid_t gid);
+    int getgrnam_r(const char *name, struct group *grp,
+              char *buf, size_t buflen, struct group **result);
+    int getgrgid_r(gid_t gid, struct group *grp,
+              char *buf, size_t buflen, struct group **result);
+
+
+3、/etc/shadow
+    shadow文件是加密的，是一个很重要的文件,是0000的权限，即使是root用户
+    虽然root用户显示也是0000的权限，但root用户其实时可以读写的，但是我们肯定
+    不会去更改它。
+    因为root用户只有x权限（执行权限）绕不过去，其他权限，不管怎么设置，root都可以进行，这个0000只是提醒root用户，不要这么做。
+    root唯独绕不过去的只有执行权限。
+
+    getspnam();
+    crypt();
+    getpass();
+
+
+    #include <shadow.h>
+    struct spwd *getspnam(const char *name);
+
+    这个可能需要定义宏：
+    #define _XOPEN_SOURCE
+    #include <crypt.h>
+    char *crypt(const char *phrase, const char *setting);
+    char *crypt_r(const char *phrase, const char *setting, structcrypt_data *data);
+    char *crypt_rn(const char *phrase, const char *setting, void *data, intsize);
+    char *crypt_ra(const char *phrase, const char *setting, void **data,int *size);
+
+    Link with -lcrypt.
+
+    POSIX specifies that  crypt  is  declared  in  unistd.h,  but  only  if  the  macro
+       _XOPEN_CRYPT  is  defined  and  has  a  value greater than or equal to zero.  Since
+       libcrypt does not provide unistd.h,  it  declares  crypt,  crypt_r,  crypt_rn,  and
+       crypt_ra in crypt.h instead.
+
+
+4、时间戳
+    ll里面显示的是mtime，即最后一次修改的时间
+    机器喜欢大小数（二进制）time_t
+    用户喜欢字符串（文字） char*
+    程序员喜欢结构体（工整）strcut tm
+    内核通过time映射为time_t类型，time_t类型是系统类型，表示日历时间
+    至于类型时间的转换，有专门的函数
+    
+    time();从内核中取时间戳
+    gmtime();从time_t转换为struct tm
+    localtime();从time_t转换为struct tm
+    mktime();从struct tm转换为time_t
+    strftime();将struct tm转换为格式化字符串
+
+    #include <time.h>
+    time_t time(time_t *tloc);
+
+
+三、进程环境
+
+1、main函数
+    int main(int argc, char **agrv){}
+    以前的manin函数是有第三个参数的，就是命令行环境
+
+2、进程的终止情况（一定要背过）
+    正常终止：
+        1.从main函数返回、
+        return是给谁看的？
+        return是给父进程看的，main的父进程可以是另一个程序，也可以是shell命令。
+        echo $?  打印上一条语句的执行状态
+
+        2.调用exit
+        exit是库函数，而_exit和_Exit是系统调用，他们有区别。
+        首先肯定是库函数以来系统调用，这毫无疑问。
+        其次，exit库函数，会进行进程结束之前的清理工作，比如处理钩子函数，清理IO。
+        而系统调用，将会跳过这些步骤，直接进入内核，杀死进程。
+        所以，系统调用_exit和_Exit不会调用钩子函数
+
+        3.调用_exit或_Exit
+        既然上面说了，系统调用不会做清理工作，那为什么不全部调用exit库函数呢？
+        因为有的时候，作清理工作，会让错误继续扩大，比如说清理IO进文件的时候，如果缓冲区或者内存溢出泄漏，写进文件的是垃圾内容，就不能进行IO清理，所以这个时候就绝对不能调用exit库函数，而是应该调用_exit系统调用，直接杀死进程。或者使用abort直接杀死。
+
+        4.最后一个线程从其启动历程返回
+        5.最后一个线程调用了pthread_exit函数
+
+    异常终止：
+        1.调用abort信号，杀掉进程
+        2.接到一个信号，并且终止（ctrl+C）
+        3.最后一个线程对其取消请求作出响应
+    
+    atexit();钩子函数，它特别像析构函数
+    钩子函数有巨大的作用，如果你连续打开一百个文件，在打开第一百个文件的时候失败了，你怎么办？难道手动关闭一百次？显然不是，而是在每一个打开判断的时候，挂上钩子函数，在第一个文件失败的时候，就会把前面的所有钩子函数都调用。
+
+
+3、命令行参数的分析，不仅仅是argc，argv
+    getopt();
+    getop_long();
+    几乎所有的命令行参数分析都是这两个函数来做的。
+
+4、环境变量
+    环境变量的本质就是:key = value
+    使用命令export查看环境变量
+    把操作系统看作是一个正在运行的程序,这个环境变量就类似与操作系统的全局变量.
+
+    getenv();
+    setenv();
+    unsetenv(); // 删除一个环境变量
+    putenv(); // 这个不好用,作用跟setenv一样,但是不如setenv好用.因为它的参数没有const关键字修饰
+
+5、C程序的存储空间布局
+    如果是一个32位的程序，它的虚拟空间是4G
+    3G到4G是内核态，0-3G是用户态
+    3G下面的一片小薄层存放argv和env（环境变量，命令行参数）
+    再下面是栈，栈往下生长，堆往上生长
+    栈和堆之间是阴影区，这部分是供堆栈的生长所用，也供静态库，动态库的加载使用
+    我们一般趋向于动态库，因为动态库只是一个声明，只有在执行到动态库的时候才进入特定的函数使用。
+
+    pamp + 进程号 // 这是一个命令
+    再结合程序中每一个变量的地址，就可以确定哪个地址区域代表什么区域。
+
+6、库（存储器管理，堆栈管理）
+    动态库
+
+    静态库
+
+    手工装载库（类似插件，一个损坏，不影响其他模块）
+    dlopen();
+    dlclose();
+    dlerror();
+    dlsym();
+    #include <dlfcn.h>
+
+    void *dlopen(const char *filename, int flags);
+
+    int dlclose(void *handle);
+
+    #define _GNU_SOURCE
+    #include <dlfcn.h>
+
+    void *dlmopen (Lmid_t lmid, const char *filename, int flags);
+
+    Link with -ldl
+
+
+7、函数跳转
+    goto不能跨函数跳转
+    C++异常抛出机制就是典型的跨函数跳转
+    有时候在进入到很深的栈中的时候，如果没有改变原数据结构，就没有必要一步一步回跳栈，可以直接跳出栈出口
+    setjmp(); //设置跳转点
+    longjmp(); //从哪一个跳转点，跳到哪一个跳转点，类似安全的goto，但涉及到信号内容需要特别注意
+    这两个函数可以跨函数进行，所以也叫长返回，长跳转
+    goto;是不安全的跳转
+
+8、资源的获取以及控制
+    系统资源查看命令：ulimit -a
+    里面保存了系统的资源，比如说最多可以打开1024个文件描述符的等等。
+    getrlimit(); // 获取资源总量
+    setrlimit(); // 设置资源总量
+
+    #include <sys/time.h>
+    #include <sys/resource.h>
+    int getrlimit(int resource, struct rlimit *rlim);
+    int setrlimit(int resource, const struct rlimit *rlim);
+
+    int prlimit(pid_t pid, int resource, const struct rlimit *new_limit,
+                struct rlimit *old_limit);
+    Feature Test Macro Requirements for glibc (see feature_test_macros(7)):
+    prlimit(): _GNU_SOURCE
+
+    struct rlimit结构体里只有两个成员：soft limit和hard limit
+    无论是root用户还是普通用户，soft limit的浮动都不能超过hard limit；
+    
+    普通用户可以提高或者降低soft limit，只能降低 hard limit，不能升高
+    root用户可以升高降低soft limit，也能升高降低hard limit
+
+
+
+题外话：
+1.安全问题：攻击成本大于收益
+加密算法：
+    hash：
+    hash不是加密算法，因为加密必须对应解密，而hash是不可逆的；
+    hash顶多算一个混淆；
+    但是，对于不需要解密的加密行为，比如密码加密，是可以使用hash实现的，因为不会有公司对密码进行解密，因为只有修改密码，而不会显示原密码。
+    而且，同一个原串，得到的hash串是一模一样的，这是大忌
+
+    一个好的加密算法，应该在原字符串改动一个字符的时候，加密串有一半以上改动
+
+    所有密码安全，都难防一个算法：穷举算法
+    口令随机校验：即使你输入对了，我也会给你报错，再输入正确的值，正常登陆
+    口令随机校验一般发生在某个账户在不经常的时间地点登陆的时候。

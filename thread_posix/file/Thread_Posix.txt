@@ -1,0 +1,399 @@
+二、线程
+   
+1、线程的概念
+
+   不建议信号和线程混合使用，信号是进程之间的通信方式。
+   你单独完成线程，或者单独完成信号就已经不简单了，没必要线程信号混合使用。
+   如果某一个模块，确实在某一个小范围能混用提升效率再混用。
+
+   线程说白了就是一个正在运行的函数
+   一个进程空间里最少有一个线程
+   多个线程的内存空间是共享的，所以他们的通信比较简单
+   一个新的库发布出来，就默认支持多线程，如果不支持，要特别声明。
+
+   线程有很多标准，现在用的最多的是posix标准线程。
+   也就是windows环境下使用的mingw所用的posix标准。
+   还有openmp标准，他们都只是标准，而不是实现。
+   比如：线程标识：pthread_t，这个p就是指posix
+
+   linux命令：ps axm（m：more）
+   -L：以linux的形式来看
+   --代表该进程下的线程数量
+
+   会话是一个容器，用来承载进程组；
+   进程组也是容器，用来承载进程；
+   进程也是容器，用来承载线程；
+
+   线程安全比进程安全更容易。
+
+   pthread_equal();
+   NAME
+       pthread_equal - compare thread IDs
+
+   SYNOPSIS
+       #include <pthread.h>
+
+       int pthread_equal(pthread_t t1, pthread_t t2);
+
+       Compile and link with -pthread.
+   比较两个pthread id 是否相同
+
+
+   pthread_self();
+   NAME
+       pthread_self - obtain ID of the calling thread
+
+    SYNOPSIS
+       #include <pthread.h>
+
+       pthread_t pthread_self(void);
+
+       Compile and link with -pthread.
+    返回当前线程标识，类似getpid();获得当前进程的标识
+
+2、线程的创建
+
+    pthread_create();
+    NAME
+       pthread_create - create a new thread
+
+    SYNOPSIS
+       #include <pthread.h>
+
+       int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
+                          void *(*start_routine) (void *), void *arg);
+        第二个参数，线程属性，80%是用不到的，一般就是NULL，默认属性
+        第三个参数，是函数指针，就是并列跑的函数
+        第四个参数，就是函数的参数，使用void可以进行任意类型的转换
+        成功返回0,失败返回erron，所以只能用strerror来报错，没法用perror报错
+
+    线程的调度取决于机器的调度策略。        
+
+
+3、线程的终止
+
+线程终止有3种方式：
+    1、线程从启动例程返回，返回值就是线程的退出码；
+    2、线程可以被统一进程中的其他线程取消；// 异常终止
+    3、线程调用pthread_exit()；这个函数相当于进程的exit()；
+    进程调用exit()可以去调用钩子函数；
+    线程调用pthread_exit()可以实现对线程的清理；
+
+    pthread_exit();
+
+    NAME
+       pthread_exit - terminate calling thread
+
+    SYNOPSIS
+       #include <pthread.h>
+
+       void pthread_exit(void *retval);
+
+
+线程的栈清理（线程收尸）：
+
+    pthread_join(); //相当于进程的wait，也就是收尸，可以指定收的线程。
+    pthread_cleanup_push(); //挂钩子
+    pthread_cleanup_pop(); //取钩子，这两个函数就像钩子函数一样，比钩子函数好一点
+    
+
+    pthread_join();
+
+    NAME
+       pthread_join - join with a terminated thread
+
+    SYNOPSIS
+       #include <pthread.h>
+
+       int pthread_join(pthread_t thread, void **retval);
+
+
+    pthread_cleanup_push();
+    pthread_cleanup_pop();
+
+    NAME
+       pthread_cleanup_push, pthread_cleanup_pop - push and pop thread cancellation clean-
+       up handlers
+
+    SYNOPSIS
+       #include <pthread.h>
+
+       void pthread_cleanup_push(void (*routine)(void *),
+                                 void *arg);
+       void pthread_cleanup_pop(int execute);
+    pop的参数一般就是0,1；1代表这个函数执行，0代表出栈但是不执行。
+    pop和push必须是成对出现，因为它们是一组宏，而且一人掌握一半大括号！
+    即使pop放在exit之后，即线程执行不到的地方，也要写上，不然就是语法错误！
+
+
+线程的取消选项：
+
+    如果是想要收回正在跑的线程：先取消，再收尸；即先用cancel，再用join
+
+    pthread_cancel();
+
+    NAME
+       pthread_cancel - send a cancellation request to a thread
+
+    SYNOPSIS
+       #include <pthread.h>
+
+       int pthread_cancel(pthread_t thread);
+
+    取消有两种状态：1.允许 2.不允许
+    允许取消又分为：1.异步取消 2.推迟取消； 其中推迟取消是默认的
+    推迟取消：推迟到cancel点再取消，posix定义的cancel点，都是可能引发阻塞的系统调用。
+    也就是说，你cancel之后，系统会判断程序的下一句，是不是阻塞的系统调用；
+    如果是，在阻塞的系统调用之前取消；
+    如果不是，继续执行语句，知道遇到阻塞的系统调用；
+    也就是说，使用pthread_cancel()；相对比较安全。
+
+
+    设置cancel点：
+
+    pthread_setcancelstate(); //设置是否允许取消
+    pthread_setcanceltype(); //设置取消方式
+
+    NAME
+       pthread_setcancelstate, pthread_setcanceltype - set cancelability state and type
+
+    SYNOPSIS
+       #include <pthread.h>
+
+       int pthread_setcancelstate(int state, int *oldstate);
+       int pthread_setcanceltype(int type, int *oldtype);
+
+
+
+    pthread_testcancel(); //这个函数充当cancel点，就是设置cancel点
+    即使函数中没有cancel点，也可以用这个函数人工设置cancel点
+
+    NAME
+       pthread_testcancel - request delivery of any pending cancellation request
+
+    SYNOPSIS
+       #include <pthread.h>
+
+       void pthread_testcancel(void);
+
+线程分离：
+
+    如果我创建一个线程之后，我认为这个线程此后和我不再有关系；
+    我就可以把这个线程detach出去，从此这个线程的生存与消亡与我没有关系；
+    已经detach的线程，不能再收回来。
+
+    pthread_detach()；
+
+    NAME
+       pthread_detach - detach a thread
+
+    SYNOPSIS
+       #include <pthread.h>
+
+       int pthread_detach(pthread_t thread);
+
+
+
+
+5、线程同步:
+
+线程同步：
+信号（信号既可用于线程同步，也可以用于进程同步）、
+互斥锁（读写锁中的写锁，现代的互斥锁都会先自旋一会再休眠，效率堪比自旋锁，所以自旋锁在用户层基本没用）、
+自旋锁（等待锁的时候不阻塞，还是循环等待，不放弃CPU，但是会减少线程调度的时间，适合作业周期短的情况）、
+读写锁（三种状态：加读锁，加写锁，不加锁，也叫共享互斥锁）、
+共享锁（读写锁中的读锁）、
+递归锁（用于递归上锁的自定义锁结构，自己实现）
+线程池（自定义的池类算法）、
+条件变量（由互斥量保护，允许线程无竞争的等待特定的事件发生）、
+信号量（Linux系统编程里没给，但是C++11有这个工具）、
+future（C++11的未来，可以与sync，package_task，promise共同使用）、
+原子操作（C++11的atomic操作）、
+内存顺序（针对原子操作进行的内存顺序）、
+屏障（栅栏）
+
+进程同步：
+信号、
+文件范围锁（多个进程共同读写一个文件的时候，对写文件的区域进行局部加锁，每个进程只有一把文件锁）、
+
+
+
+互斥量：
+
+   // 这两个函数是建立互斥量
+   1.pthread_mutex_destory();
+   2.pthread_mutex_init();
+
+   // 下面三个函数是建立临界区
+   3.pthread_mutex_lock();
+   3.1 pthread_mutex_trylock();
+   4.pthread_muex_unlock(); 
+
+   int pthread_mutex_destroy(pthread_mutex_t *mutex);
+   int pthread_mutex_init(pthread_mutex_t *restrict mutex,
+           const pthread_mutexattr_t *restrict attr);
+   pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+   int pthread_mutex_lock(pthread_mutex_t *mutex);
+   互斥量锁住的是一段代码能不能执行，永远不是一个变量。
+
+线程池：
+   池类算法是最常用的
+
+条件变量：
+   pthread_cond_t
+   pthread_cond_init();
+   pthread_cond_destory();
+   pthread_cond_broadcast(); //广播
+   pthread_cond_signal();
+   pthread_cond_timedwait(); // 有超时定义
+   pthread_cond_wait(); // 死等
+
+   #include <pthread.h>
+
+   int pthread_cond_destroy(pthread_cond_t *cond);
+   int pthread_cond_init(pthread_cond_t *restrict cond,
+       const pthread_condattr_t *restrict attr);
+   pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
+   int pthread_cond_broadcast(pthread_cond_t *cond);
+   int pthread_cond_signal(pthread_cond_t *cond);
+
+   int pthread_cond_timedwait(pthread_cond_t *restrict cond,
+       pthread_mutex_t *restrict mutex,
+       const struct timespec *restrict abstime);
+   int pthread_cond_wait(pthread_cond_t *restrict cond,
+       pthread_mutex_t *restrict mutex);
+
+信号量：
+   信号量就是定义一个资源总量，来实现线程同步
+   当信号量为1 的时候，就能实现互斥量的作用。
+
+读写锁：
+   读锁相当于是共享锁
+   写锁相当于是互斥锁
+
+6、线程相关的属性
+
+   多线程并发和多进程并发，多线程并发更快；
+   快多少？快百分之多少？快10——100倍
+
+   百分之八十的问题不用设置线程属性。   
+
+
+   pthread_create 函数的第二个参数 pthread_attr_t* 就代表线程属性
+
+   pthread_attr_init();
+   pthread_attr_destroy();
+   pthread_attr_setstacksize();
+   ...其他的在手册
+
+   #include <pthread.h>
+
+       int pthread_attr_init(pthread_attr_t *attr);
+       int pthread_attr_destroy(pthread_attr_t *attr);
+
+       Compile and link with -pthread.
+   SEE ALSO
+       pthread_attr_setaffinity_np(3), pthread_attr_setdetachstate(3),
+       pthread_attr_setguardsize(3), pthread_attr_setinheritsched(3),
+       pthread_attr_setschedparam(3), pthread_attr_setschedpolicy(3),
+       pthread_attr_setscope(3), pthread_attr_setstack(3), pthread_attr_setstackaddr(3),
+       pthread_attr_setstacksize(3), pthread_create(3), pthread_getattr_np(3),
+       pthread_setattr_default_np(3), pthreads(7)
+
+线程同步的属性
+   互斥量属性：
+   pthread_mutexattr_init();
+   pthread_mutexattr_destory();
+   pthread_mutexattr_getpshared();
+   pthread_mutexattr_setpshared(); //跨进程起作用、
+   pthread_mutexattr_gettype();
+   pthread_mutexattr_settype();
+   pthread_condattr_init();
+   pthread_condattr_destory();
+   clone(); //可以打破进程和线程之间的隔阂，是一个非常牛的函数，需要调用者很细节的调用
+   NAME
+       clone, __clone2 - create a child process
+
+   SYNOPSIS
+       /* Prototype for the glibc wrapper function */
+
+       #define _GNU_SOURCE
+       #include <sched.h>
+
+       int clone(int (*fn)(void *), void *child_stack,
+                 int flags, void *arg, ...
+                 /* pid_t *ptid, void *newtls, pid_t *ctid */ );
+
+       /* For the prototype of the raw system call, see NOTES */
+   
+   在某一个项目中，单独使用线程或者进程都不是很好用，
+   就可以使用clone来创建一个介于线程和进程之间的东西。
+
+   线程和进程本来就没有分的很清楚，本来就是一马事情。
+
+7、重入
+   涉及线程安全。
+   在并发编程中，更容易涉及到重入。
+
+   多线程中的IO：所用的所有IO函数都支持线程？
+   也就是说，这些IO都会有加锁解锁的操作，
+   但是如果确定只是单进程，单线程，可以使用IO的unlock版本（不支持线程版本）
+    #include <stdio.h>
+
+       int getc_unlocked(FILE *stream);
+       int getchar_unlocked(void);
+       int putc_unlocked(int c, FILE *stream);
+       int putchar_unlocked(int c);
+
+       void clearerr_unlocked(FILE *stream);
+       int feof_unlocked(FILE *stream);
+       int ferror_unlocked(FILE *stream);
+       int fileno_unlocked(FILE *stream);
+       int fflush_unlocked(FILE *stream);
+       int fgetc_unlocked(FILE *stream);
+       ...
+
+
+8、线程和信号的关系
+   线程和信号最好不要一起使用。
+   以线程为单位：
+   每个线程中都有自己的mask和pending位图，
+   以进程为单位，是没有mask的，只有pending位图。
+   线程给线程发信号，会体现在某一个线程的pending位上，
+   进程范围内的信号靠内核过来的线程的mask位图与进程的pending位图作按位与。
+
+   pthread_sigmask();
+   sigwait();
+   pthread_kill();
+
+
+   #include <signal.h>
+       int pthread_sigmask(int how, const sigset_t *set, sigset_t *oldset);
+       Compile and link with -pthread.
+
+
+   SYNOPSIS
+       #include <signal.h>
+        int sigwait(const sigset_t *set, int *sig);
+
+   #include <signal.h>
+       int pthread_kill(pthread_t thread, int sig);
+       Compile and link with -pthread.
+
+
+9、线程openmp标准和线程模式
+   openmp是依赖于编译器的，是靠标记实现的并发。
+   #include <stdio.h>
+   #include <stdlib.h>
+   int main()
+   {
+   #pragma omp parallel sections
+   	{
+   #pragma omp section
+   	printf("[%d]Hello\n",omp_get_thread_num());
+   #pragma omp section
+   	printf("[%d]World!\n",omp_get_thread_num());
+   	}
+   	exit(0);
+   }

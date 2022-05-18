@@ -1,0 +1,212 @@
+进程基本知识
+
+1、进程标识符pid
+    类型pid_t，传统上是有符号16位
+    ps命令
+    进程号是顺次向下使用，直到一个轮回，才会从头开始。
+    文件描述符是每次用最小的。
+    getpid();
+    getppid();
+    #include <sys/types.h>
+    #include <unistd.h>
+
+    pid_t getpid(void);
+    pid_t getppid(void);
+
+
+2、进程的产生
+    以前提到过的setjmp，这个函数是典型的执行一次，返回两次的函数
+    fork也是一样的，两次返回在不同的两个进程之中。
+    所以fork之后一定是一个分支语句，来判断是父进程还是子进程。
+    根据fork的返回值：在父进程里返回子进程的pid，在子进程里返回0
+
+    fork就是复制，两个进程一模一样，但是有区别：
+    1.父子进程的pid不同
+    2.父子进程的ppid也不同
+    3.fork的返回值不一样
+    4.未决信号和文件锁不继承
+    5.资源利用量清零 //父进程用到的大量资源，不会负担到子进程
+
+    init进程：1号进程，是所有进程的祖先进程
+    调度器的调度策略来决定哪个进程先运行，所以到底是父进程还是子进程先运行都是不确定的。
+    在fork之前，刷新所有的流
+
+    fork(); //复制当前进程为子进程
+    vfork(); //已经被废除
+
+    因为fork()增加了写时拷贝功能，所以就完全替代了vfork
+
+    #include <sys/types.h>
+    #include <unistd.h>
+    pid_t fork(void);
+
+3、进程的消亡及释放资源
+    处理僵尸进程，给已经exit的进程回收资源
+    僵尸进程就是一个结构体，它几乎不占用内存资源，那为什么还要及时处理呢？
+    因为僵尸进程的结构体里占用着pid，一台机器的pid号是有限的
+    孤儿进程是指父进程已经结束了，但子进程还没有结束的子进程
+    
+    wait();// 主要，不能根据pid去wait，死等，阻塞
+    waitpid();// 主要，非阻塞，可以指定范围pid或者具体的pid，第三个参数options可以指定是阻塞还是非阻塞
+    因为waitpid的pid有四种情况，所以是分类收回pid，并不仅仅是具体到某一个pid
+
+    waitid();
+    wait3();// 没必要涉及
+    wait4();// 没必要涉及
+
+    #include <sys/types.h>
+    #include <sys/wait.h>
+    pid_t wait(int *wstatus);
+    pid_t waitpid(pid_t pid, int *wstatus, int options);
+    
+    多进程分配算法：分块算法，交叉分配，池类算法
+
+    在写多进程程序时候，分块分配和交叉分配都能用的情况下，一般是交叉分配最常用
+    但也有时候交叉分配比较彩，比如在算质数的时候，因为总有一个线程，
+    一直在算同一个数的整倍数，所以总有一个线程，一个质数也遇不到。
+
+4、exec函数族
+    这个函数涉及到程序的切换，所以在切换之前要刷新所有要刷新的流
+
+    few这三个函数做成unix框架，fork，exec，wait
+    execl(),
+    execlp(), 
+    execle(), 
+    execv(), 
+    execvp(), 
+    execvpe(), - execute a file
+
+5、用户权限和组权限(u+s,g+s)
+    r,e,s,分别是real，effective，save，save不一定存在
+    每个用户在执行shell命令的时候都是带着用户权限的，
+    而鉴定用户权限的就是effective ID
+
+    比如sudo指令，就是临时把用户eid更改为root的eid
+
+    getuid();
+    geteuid();
+    getgid();
+    getegid();
+    setuid(); // 修改eid
+    setgid(); // 修改geid
+    setreuid(); // 交换，原子操作
+    setregid(); // 交换，原子操作
+    seteuid();
+    setegid();
+
+    #include <unistd.h>
+    #include <sys/types.h>
+    uid_t getuid(void);
+    uid_t geteuid(void);
+    gid_t getgid(void);
+    gid_t getegid(void);
+    int setuid(uid_t uid);
+
+    普通用户更改用户eid，需要root用户的同意
+    可以先chown root 文件名，将这个文件所属与root
+    然后chomod u+s 文件名，给这个文件u+s的权限
+
+
+6、观摩课：解释器文件
+    unix是一个只讲机制，而不讲策略。
+    你完全可以使用unix的各种shell，打造自己的操作系统
+
+    解释器文件说白了就是脚本文件。
+    最复杂的文件就是exec
+    解释器遇到一般的程序的时候，会把整个程序装载进shell
+    解释器遇到脚本文件的时候，比如说shell脚本，就解析第一句，#！...
+    把所使用的脚本解析出来，然后把文件的内容放入到指定的脚本中去执行。
+    这个所使用的脚本，可以是别的程序。
+
+    有什么用？可以在任何地方，指定任何shell，比如登陆的时候，就给一个top功能的shell
+
+7、system();
+    执行一个shell命令，他就相当于一个few的封装
+
+    system - execute a shell command
+    SYNOPSIS
+    #include <stdlib.h>
+    int system(const char *command)
+
+
+8、进程会计
+    只是一个方言。
+    acct();
+
+    #include <unistd.h>
+    int acct(const char *filename);
+
+9、进程时间
+    命令：time 可执行文件
+
+    这个time怎么来的？就是当前shell文件，等待程序执行完毕的时间间隔
+
+    times();
+
+    NAME
+       times - get process times
+
+    SYNOPSIS
+       #include <sys/times.h>
+
+       clock_t times(struct tms *buf);
+
+    除了time计时，还有clock_t计时，比秒数更精确，是滴答数
+
+10、守护进程
+    怎么查看守护进程？ps axj
+    1.脱离控制终端，TTY 为 ？
+    2.SID 和 PGID 和 PID 相同
+    3.守护进程的PPID 一定是1，就是守护进程的父进程一定是1号进程，
+    因为只有子进程能进化为守护进程，进化之后脱离父进程或者关闭父进程
+
+    要完成单实例的守护进程：使用锁文件，/var/run/name.pid
+    每次启动都会往name.pid里写入自己的pid
+
+    开机启动脚本文件：/etc/rc*
+
+    守护进程就是后台运行的进程，也叫精灵进程
+    大多数是server端
+    守护进程是一个会话的领导者，也是一个所属组的领导者
+
+    会话：session，http里的session是用来标识一组连接的
+    在unix里，一次成功的shell登陆，就是一个session
+    session标识：sid
+
+    setsid();
+    getpgrp(); //查看某一个进程的组的id
+    getpgid(); //获得某一个进程的pid
+    setpgid(); //将某一个进程放入到某一个组中
+
+    NAME
+       setsid - creates a session and sets the process group ID
+
+    SYNOPSIS
+       #include <sys/types.h>
+       #include <unistd.h>
+
+       pid_t setsid(void);
+
+    终端：现在基本是虚拟终端，真正的终端只会输入输出
+    
+
+
+11、系统日志
+    每一个应用程序都有必要去写系统日志，但不能人人都写
+    系统日志在 /var/log/
+    message是系统的主日志文件
+    syslogd服务：所有要写系统日志的人都提交给syslog服务，由syslog服务统一写法。
+    所以我们只需要通过函数接口，把要写的内容给syslogd就可以了。
+
+    openlog(); //打开
+    syslog(); // 提交
+    closelog(); // 关闭
+
+    #include <syslog.h>
+    // 参数：人物（随便一个字段），要求（一般挂pid），来源（不能随便写，就只有固定的几种）
+    void openlog(const char *ident, int option, int facility);
+    // 参数：级别，要传递的内容，变参类似printf
+    void syslog(int priority, const char *format, ...);
+    void closelog(void);
+
+    一般级别只有大于LOG_INFO的才会被写入系统日志，像LOG_DEBUG是不会写入系统日志的
